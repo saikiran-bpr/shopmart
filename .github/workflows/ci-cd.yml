@@ -19,7 +19,7 @@ jobs:
         working-directory: ./server
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
@@ -53,7 +53,7 @@ jobs:
         working-directory: ./client
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Use Node.js 20.x
       uses: actions/setup-node@v4
@@ -83,7 +83,7 @@ jobs:
         working-directory: ./server
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Use Node.js 20.x
       uses: actions/setup-node@v4
