@@ -1,52 +1,78 @@
+const fs = require('fs/promises');
+const path = require('path');
 const request = require('supertest');
 const app = require('../src/app');
 
+const dataFilePath = path.join(__dirname, '..', 'data', 'products.json');
+
+const seedProducts = [
+  {
+    id: 'p-1001',
+    name: 'Basmati Rice 5kg',
+    category: 'Grocery',
+    price: 12.99,
+    stock: 24,
+    createdAt: '2026-03-18T08:00:00.000Z',
+    updatedAt: '2026-03-18T08:00:00.000Z'
+  },
+  {
+    id: 'p-1002',
+    name: 'Almond Milk 1L',
+    category: 'Dairy',
+    price: 3.49,
+    stock: 18,
+    createdAt: '2026-03-18T08:00:00.000Z',
+    updatedAt: '2026-03-18T08:00:00.000Z'
+  }
+];
+
 describe('Integration Tests', () => {
-  describe('API Health and Status Flow', () => {
-    it('should allow client to check health status', async () => {
-      // Step 1: Client checks if API is healthy
-      const healthRes = await request(app).get('/api/health');
-      expect(healthRes.statusCode).toEqual(200);
-      expect(healthRes.body.status).toBe('ok');
-
-      // Step 2: Client can access root endpoint
-      const rootRes = await request(app).get('/');
-      expect(rootRes.statusCode).toEqual(200);
-
-      // Step 3: Both endpoints are accessible and working
-      expect(healthRes.body).toHaveProperty('timestamp');
-      expect(typeof rootRes.text).toBe('string');
-    });
+  beforeEach(async () => {
+    await fs.writeFile(dataFilePath, JSON.stringify(seedProducts, null, 2));
   });
 
-  describe('Cross-Origin Request Handling', () => {
-    it('should handle preflight CORS requests', async () => {
-      const res = await request(app)
-        .options('/api/health')
-        .set('Origin', 'http://localhost:3000');
-
-      expect([200, 204]).toContain(res.statusCode);
+  it('should complete full inventory workflow', async () => {
+    const create = await request(app).post('/api/products').send({
+      name: 'Organic Honey',
+      category: 'Grocery',
+      price: 7.99,
+      stock: 6
     });
+    expect(create.statusCode).toBe(201);
 
-    it('should accept requests from different origins', async () => {
-      const res = await request(app)
-        .get('/api/health')
-        .set('Origin', 'http://example.com');
+    const createdId = create.body.id;
 
-      expect(res.statusCode).toEqual(200);
-      expect(res.headers['access-control-allow-origin']).toBeDefined();
+    const update = await request(app).put(`/api/products/${createdId}`).send({
+      name: 'Organic Honey XL',
+      category: 'Grocery',
+      price: 9.49,
+      stock: 10
     });
+    expect(update.statusCode).toBe(200);
+    expect(update.body.name).toBe('Organic Honey XL');
+
+    const patch = await request(app).patch(`/api/products/${createdId}/stock`).send({ delta: -4 });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.body.stock).toBe(6);
+
+    const filtered = await request(app).get('/api/products').query({ search: 'Honey' });
+    expect(filtered.statusCode).toBe(200);
+    expect(filtered.body.count).toBe(1);
+
+    const dashboard = await request(app).get('/api/dashboard');
+    expect(dashboard.statusCode).toBe(200);
+    expect(dashboard.body.totalProducts).toBe(3);
+
+    const remove = await request(app).delete(`/api/products/${createdId}`);
+    expect(remove.statusCode).toBe(200);
+
+    const verify = await request(app).get('/api/products').query({ search: 'Honey' });
+    expect(verify.body.count).toBe(0);
   });
 
-  describe('Request-Response Cycle', () => {
-    it('should handle multiple consecutive requests', async () => {
-      const res1 = await request(app).get('/api/health');
-      const res2 = await request(app).get('/api/health');
-      const res3 = await request(app).get('/');
-
-      expect(res1.statusCode).toEqual(200);
-      expect(res2.statusCode).toEqual(200);
-      expect(res3.statusCode).toEqual(200);
-    });
+  it('should include CORS headers for client apps', async () => {
+    const res = await request(app).get('/api/health').set('Origin', 'http://localhost:5173');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['access-control-allow-origin']).toBeDefined();
   });
 });

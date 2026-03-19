@@ -1,91 +1,107 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+
+function jsonResponse(data, ok = true, status = 200) {
+  return Promise.resolve({
+    ok,
+    status,
+    json: () => Promise.resolve(data)
+  });
+}
 
 describe('App Component', () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders ShopSmart title', () => {
-    // Mock fetch
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        json: () => Promise.resolve({ status: 'ok', message: 'Test Msg', timestamp: 'now' })
-      })
-    );
-
-    render(<App />);
-    const linkElement = screen.getByText(/ShopSmart/i);
-    expect(linkElement).toBeInTheDocument();
-  });
-
-  it('displays loading text initially', () => {
-    global.fetch = vi.fn(() => new Promise(() => {})); // Never resolves
-
-    render(<App />);
-    const loadingText = screen.getByText(/Loading backend status/i);
-    expect(loadingText).toBeInTheDocument();
-  });
-
-  it('fetches and displays backend status', async () => {
-    const mockData = {
-      status: 'ok',
-      message: 'ShopSmart Backend is running',
-      timestamp: new Date().toISOString()
-    };
-
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        json: () => Promise.resolve(mockData)
-      })
-    );
+  it('renders dashboard and product list from API', async () => {
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/health')) {
+        return jsonResponse({ status: 'ok', service: 'test' });
+      }
+      if (String(url).includes('/api/dashboard')) {
+        return jsonResponse({
+          totalProducts: 2,
+          totalUnitsInStock: 30,
+          totalInventoryValue: 89.5,
+          lowStockItems: 1
+        });
+      }
+      if (String(url).includes('/api/products')) {
+        return jsonResponse({
+          count: 2,
+          products: [
+            { id: 'p1', name: 'Rice', category: 'Grocery', price: 10, stock: 12 },
+            { id: 'p2', name: 'Milk', category: 'Dairy', price: 3.5, stock: 18 }
+          ]
+        });
+      }
+      return jsonResponse({});
+    });
 
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Status:/i)).toBeInTheDocument();
-      expect(screen.getByText('ok')).toBeInTheDocument();
-      expect(screen.getByText(/ShopSmart Backend is running/)).toBeInTheDocument();
+      expect(screen.getByText(/Inventory Control Dashboard/i)).toBeInTheDocument();
+      expect(screen.getByText(/Rice/i)).toBeInTheDocument();
+      expect(screen.getByText(/Milk/i)).toBeInTheDocument();
     });
   });
 
-  it('renders Backend Status card', () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        json: () => Promise.resolve({ status: 'ok', message: 'Test', timestamp: 'now' })
-      })
-    );
-
-    render(<App />);
-    const cardHeading = screen.getByRole('heading', { level: 2, name: /Backend Status/i });
-    expect(cardHeading).toBeInTheDocument();
-  });
-
-  it('calls fetch with correct API endpoint', () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        json: () => Promise.resolve({ status: 'ok', message: 'Test', timestamp: 'now' })
-      })
-    );
-
-    render(<App />);
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/api/health'));
-  });
-
-  it('handles fetch errors gracefully', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    global.fetch = vi.fn(() => Promise.reject(new Error('Network error')));
+  it('submits create product form', async () => {
+    global.fetch = vi.fn((url, options) => {
+      if (String(url).includes('/api/health')) {
+        return jsonResponse({ status: 'ok', service: 'test' });
+      }
+      if (String(url).includes('/api/dashboard')) {
+        return jsonResponse({
+          totalProducts: 2,
+          totalUnitsInStock: 20,
+          totalInventoryValue: 50,
+          lowStockItems: 0
+        });
+      }
+      if (String(url).includes('/api/products') && (!options || options.method === undefined)) {
+        return jsonResponse({ count: 0, products: [] });
+      }
+      if (String(url).includes('/api/products') && options?.method === 'POST') {
+        return jsonResponse({ id: 'new-1' }, true, 201);
+      }
+      return jsonResponse({});
+    });
 
     render(<App />);
 
-    setTimeout(() => {
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Error fetching health check:',
-        expect.any(Error)
+    await waitFor(() => {
+      expect(screen.getByText(/Add Product/i)).toBeInTheDocument();
+    });
+
+    const nameInput = screen.getByPlaceholderText(/Product name/i);
+    const categoryInput = screen.getAllByPlaceholderText(/Category/i)[0];
+    const priceInput = screen.getByPlaceholderText(/Price/i);
+    const stockInput = screen.getByPlaceholderText(/Stock/i);
+
+    fireEvent.change(nameInput, {
+      target: { value: 'Tea' }
+    });
+    fireEvent.change(categoryInput, {
+      target: { value: 'Beverages' }
+    });
+    fireEvent.change(priceInput, {
+      target: { value: '6.20' }
+    });
+    fireEvent.change(stockInput, {
+      target: { value: '15' }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Create Product/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/products'),
+        expect.objectContaining({ method: 'POST' })
       );
-      consoleErrorSpy.mockRestore();
-    }, 0);
+    });
   });
 });

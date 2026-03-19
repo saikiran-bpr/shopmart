@@ -1,0 +1,11 @@
+[
+  {
+    "id": "p-1002",
+    "name": "Almond Milk 1L",
+    "category": "Dairy",
+    "price": 3.49,
+    "stock": 18,
+    "createdAt": "2026-03-18T08:00:00.000Z",
+    "updatedAt": "2026-03-18T08:00:00.000Z"
+  }
+]
