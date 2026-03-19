@@ -1,5 +1,14 @@
 [
   {
+    "id": "p-1001",
+    "name": "Basmati Rice 5kg",
+    "category": "Grocery",
+    "price": 12.99,
+    "stock": 24,
+    "createdAt": "2026-03-18T08:00:00.000Z",
+    "updatedAt": "2026-03-18T08:00:00.000Z"
+  },
+  {
     "id": "p-1002",
     "name": "Almond Milk 1L",
     "category": "Dairy",

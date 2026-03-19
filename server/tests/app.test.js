@@ -1,9 +1,13 @@
 const fs = require('fs/promises');
+const os = require('os');
 const path = require('path');
 const request = require('supertest');
 const app = require('../src/app');
 
-const dataFilePath = path.join(__dirname, '..', 'data', 'products.json');
+const testDataFilePath = path.join(
+  os.tmpdir(),
+  `shopsmart-app-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`
+);
 
 const seedProducts = [
   {
@@ -27,12 +31,21 @@ const seedProducts = [
 ];
 
 async function resetProducts() {
-  await fs.writeFile(dataFilePath, JSON.stringify(seedProducts, null, 2));
+  await fs.writeFile(testDataFilePath, JSON.stringify(seedProducts, null, 2));
 }
 
 describe('Express App', () => {
+  beforeAll(() => {
+    process.env.PRODUCTS_DATA_FILE = testDataFilePath;
+  });
+
   beforeEach(async () => {
     await resetProducts();
+  });
+
+  afterAll(async () => {
+    delete process.env.PRODUCTS_DATA_FILE;
+    await fs.rm(testDataFilePath, { force: true });
   });
 
   describe('GET /api/health', () => {

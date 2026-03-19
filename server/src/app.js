@@ -4,17 +4,20 @@ const fs = require('fs/promises');
 const path = require('path');
 
 const app = express();
-const dataFilePath = path.join(__dirname, '..', 'data', 'products.json');
+const defaultDataFilePath = path.join(__dirname, '..', 'data', 'products.json');
 
 app.use(cors());
 app.use(express.json());
 
 async function readProducts() {
+  const dataFilePath = process.env.PRODUCTS_DATA_FILE || defaultDataFilePath;
   const raw = await fs.readFile(dataFilePath, 'utf-8');
   return JSON.parse(raw);
 }
 
 async function writeProducts(products) {
+  const dataFilePath = process.env.PRODUCTS_DATA_FILE || defaultDataFilePath;
+  await fs.mkdir(path.dirname(dataFilePath), { recursive: true });
   await fs.writeFile(dataFilePath, JSON.stringify(products, null, 2));
 }
 

@@ -1,9 +1,13 @@
 const fs = require('fs/promises');
+const os = require('os');
 const path = require('path');
 const request = require('supertest');
 const app = require('../src/app');
 
-const dataFilePath = path.join(__dirname, '..', 'data', 'products.json');
+const testDataFilePath = path.join(
+  os.tmpdir(),
+  `shopsmart-integration-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`
+);
 
 const seedProducts = [
   {
@@ -27,8 +31,17 @@ const seedProducts = [
 ];
 
 describe('Integration Tests', () => {
+  beforeAll(() => {
+    process.env.PRODUCTS_DATA_FILE = testDataFilePath;
+  });
+
   beforeEach(async () => {
-    await fs.writeFile(dataFilePath, JSON.stringify(seedProducts, null, 2));
+    await fs.writeFile(testDataFilePath, JSON.stringify(seedProducts, null, 2));
+  });
+
+  afterAll(async () => {
+    delete process.env.PRODUCTS_DATA_FILE;
+    await fs.rm(testDataFilePath, { force: true });
   });
 
   it('should complete full inventory workflow', async () => {
