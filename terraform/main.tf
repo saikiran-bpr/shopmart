@@ -149,7 +149,9 @@ resource "aws_ecs_task_definition" "app" {
 }
 
 resource "aws_ecs_service" "app" {
-  name            = "${var.project_name}-service"
+  # Suffix avoids collision with deleted services that ECS keeps in DRAINING/INACTIVE
+  # for up to an hour after deletion.
+  name            = "${var.project_name}-service-${random_id.suffix.hex}"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count

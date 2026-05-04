@@ -157,12 +157,20 @@ jobs:
 
           echo "No prior state. Cleaning up any orphan shopmart-* resources from previous failed runs..."
 
-          # ECS: stop tasks, scale services to 0, delete services, then cluster
+          # ECS: scale-to-0 + delete services, wait for them to go INACTIVE, then delete cluster
           for CLUSTER in shopmart-cluster; do
             if aws ecs describe-clusters --clusters "$CLUSTER" --region "$AWS_REGION" --query 'clusters[?status==`ACTIVE`]' --output text 2>/dev/null | grep -q .; then
-              for SVC in $(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" --query 'serviceArns[]' --output text 2>/dev/null); do
+              SVC_ARNS=$(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" --query 'serviceArns[]' --output text 2>/dev/null)
+              for SVC in $SVC_ARNS; do
                 aws ecs update-service --cluster "$CLUSTER" --service "$SVC" --desired-count 0 --region "$AWS_REGION" >/dev/null 2>&1
+                # Stop running tasks for faster drain
+                for TASK in $(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$(basename "$SVC")" --region "$AWS_REGION" --query 'taskArns[]' --output text 2>/dev/null); do
+                  aws ecs stop-task --cluster "$CLUSTER" --task "$TASK" --region "$AWS_REGION" >/dev/null 2>&1
+                done
                 aws ecs delete-service --cluster "$CLUSTER" --service "$SVC" --force --region "$AWS_REGION" >/dev/null 2>&1
+                # Wait up to ~5 min for service to become INACTIVE
+                aws ecs wait services-inactive --cluster "$CLUSTER" --services "$SVC" --region "$AWS_REGION" 2>/dev/null
+                echo "Deleted ECS service $SVC"
               done
               aws ecs delete-cluster --cluster "$CLUSTER" --region "$AWS_REGION" >/dev/null 2>&1 && echo "Deleted ECS cluster $CLUSTER"
             fi
