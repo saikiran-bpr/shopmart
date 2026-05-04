@@ -90,7 +90,11 @@ jobs:
         working-directory: ./terraform
 
     outputs:
-      ecr_repository_url: ${{ steps.tf_outputs.outputs.ecr_repository_url }}
+      # Note: ecr_repository_url is intentionally NOT exposed across jobs.
+      # It contains the AWS account ID, which configure-aws-credentials
+      # registers as a masked secret — GitHub then strips outputs that contain
+      # masked values when passed via `needs`. Phase 3 derives the URL from
+      # amazon-ecr-login's `registry` output instead.
       ecs_cluster_name:   ${{ steps.tf_outputs.outputs.ecs_cluster_name }}
       ecs_service_name:   ${{ steps.tf_outputs.outputs.ecs_service_name }}
       s3_bucket_name:     ${{ steps.tf_outputs.outputs.s3_bucket_name }}
@@ -239,7 +243,6 @@ jobs:
             echo "$name=$value"
           }
 
-          capture ecr_repository_url
           capture ecs_cluster_name
           capture ecs_service_name
           capture s3_bucket_name
@@ -271,13 +274,12 @@ jobs:
 
       - name: Verify upstream outputs are present
         env:
-          ECR_REPO_URL: ${{ needs.terraform.outputs.ecr_repository_url }}
-          CLUSTER:      ${{ needs.terraform.outputs.ecs_cluster_name }}
-          SERVICE:      ${{ needs.terraform.outputs.ecs_service_name }}
+          CLUSTER: ${{ needs.terraform.outputs.ecs_cluster_name }}
+          SERVICE: ${{ needs.terraform.outputs.ecs_service_name }}
         run: |
           set -euo pipefail
           missing=0
-          for var in ECR_REPO_URL CLUSTER SERVICE; do
+          for var in CLUSTER SERVICE; do
             if [ -z "${!var}" ]; then
               echo "ERROR: $var is empty (terraform job did not export it)" >&2
               missing=1
@@ -287,10 +289,12 @@ jobs:
 
       - name: Build, tag, and push image
         env:
-          ECR_REPO_URL: ${{ needs.terraform.outputs.ecr_repository_url }}
+          REGISTRY:  ${{ steps.ecr-login.outputs.registry }}
+          REPO_NAME: ${{ env.PROJECT_NAME }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           set -euo pipefail
+          ECR_REPO_URL="$REGISTRY/$REPO_NAME"
           docker build \
             -t "$ECR_REPO_URL:latest" \
             -t "$ECR_REPO_URL:$IMAGE_TAG" \
