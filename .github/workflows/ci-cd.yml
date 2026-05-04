@@ -124,14 +124,33 @@ jobs:
       - name: Terraform apply
         run: terraform apply -input=false -auto-approve tfplan
 
+      - name: Show all Terraform outputs (debug)
+        run: terraform output
+
       - name: Export Terraform outputs
         id: tf_outputs
+        shell: bash
         run: |
-          echo "ecr_repository_url=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_OUTPUT"
-          echo "ecs_cluster_name=$(terraform output -raw ecs_cluster_name)"     >> "$GITHUB_OUTPUT"
-          echo "ecs_service_name=$(terraform output -raw ecs_service_name)"     >> "$GITHUB_OUTPUT"
-          echo "s3_bucket_name=$(terraform output -raw s3_bucket_name)"         >> "$GITHUB_OUTPUT"
-          echo "log_group=$(terraform output -raw log_group)"                   >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          capture() {
+            local name="$1"
+            local value
+            value="$(terraform output -raw "$name")"
+            if [ -z "$value" ]; then
+              echo "ERROR: terraform output '$name' is empty" >&2
+              terraform output >&2 || true
+              exit 1
+            fi
+            echo "$name=$value" >> "$GITHUB_OUTPUT"
+            echo "$name=$value"
+          }
+
+          capture ecr_repository_url
+          capture ecs_cluster_name
+          capture ecs_service_name
+          capture s3_bucket_name
+          capture log_group
 
       - name: Persist Terraform state
         uses: actions/upload-artifact@v4
@@ -168,11 +187,28 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Verify upstream outputs are present
+        env:
+          ECR_REPO_URL: ${{ needs.terraform.outputs.ecr_repository_url }}
+          CLUSTER:      ${{ needs.terraform.outputs.ecs_cluster_name }}
+          SERVICE:      ${{ needs.terraform.outputs.ecs_service_name }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for var in ECR_REPO_URL CLUSTER SERVICE; do
+            if [ -z "${!var}" ]; then
+              echo "ERROR: $var is empty (terraform job did not export it)" >&2
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+
       - name: Build, tag, and push image
         env:
           ECR_REPO_URL: ${{ needs.terraform.outputs.ecr_repository_url }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          set -euo pipefail
           docker build \
             -t "$ECR_REPO_URL:latest" \
             -t "$ECR_REPO_URL:$IMAGE_TAG" \
