@@ -70,7 +70,7 @@ jobs:
 
       - name: Upload backend coverage report
         if: matrix.node-version == '20.x'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: server/coverage
